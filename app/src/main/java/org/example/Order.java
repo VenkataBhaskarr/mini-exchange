@@ -5,17 +5,23 @@ public class Order {
     private String stock;
     private int quantity;
     private double price;
+    private String type;
     private long timeStamp;
     private int start = 00000000;
 
    
 
-    public Order(String stock, int quantity, double price) {
+    public Order(String type, String stock, int quantity, double price) {
         this.orderID = generateRandomOrderId();
         this.stock = stock;
+        this.type = type;
         this.quantity = quantity;
         this.price = price;
         this.timeStamp = System.currentTimeMillis();
+    }
+
+    public String getType(){
+        return this.type;
     }
 
     public String generateRandomOrderId(){

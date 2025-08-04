@@ -4,12 +4,19 @@
 package org.example;
 
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
 
 public class App {
+    private static int PROCESSING_THREADS = 4;
     private static List<Stock> stocks;
     private static List<Order> orders;
+    private static List<Transaction> transactions;
     public static void main(String[] args) {
         // String a = args[0];
        Scanner sc = new Scanner(System.in);
@@ -98,7 +105,69 @@ public class App {
     }
 
     public static void handleCSVOrders(){
-        
+        File file = new File("/Users/apple/Desktop/dev/exchange-java/app/data/orders.csv");
+        try{
+            ExecutorService service = Executors.newFixedThreadPool(PROCESSING_THREADS);
+            BufferedReader br = new BufferedReader(new FileReader(file));
+            while(br.ready()){
+                String line = br.readLine();
+                service.execute(() -> handleOrder(line));
+            }
+            br.close();
+            service.shutdown();
+        }catch(Exception e){
+            System.out.println(e);
+            return;
+        }
+    }
+
+    public static void handleOrder(String line){
+        String[] orderInfo = line.split(",");
+        Order order = new Order(orderInfo[0], orderInfo[1], Integer.parseInt(orderInfo[2]), Double.parseDouble(orderInfo[3]));
+
+        // START, Please optimize the code from here
+        for(Stock stock: stocks){
+            if(stock.getName().equals(order.getStock())){
+                if(order.getType() == "BUY"){
+                    stock.addBuyOrder(order);
+                }else{
+                    stock.addSellOrder(order);
+                }
+            }
+        }
+
+        for(Stock stock: stocks){
+             if(stock.getName().equals(order.getStock())){
+                processOrderBookOfTheStock(stock);
+             }
+        }
+        // END.
+
+    }
+
+    public static void processOrderBookOfTheStock(Stock stock){
+        Order buyorder = stock.getBuyOrderPeek();
+        Order sellorder = stock.getSellOrderPeek();
+
+        if(buyorder.getPrice() == sellorder.getPrice()){
+            stock.removeBuyOrderPeek();
+            stock.removeSellOrderPeek();
+            stock.setCurrentPrice(buyorder.getPrice());
+            if(buyorder.getQuantity() > sellorder.getQuantity()){
+                int updatedQuantity = buyorder.getQuantity() - sellorder.getQuantity();
+                buyorder.setQuantity(updatedQuantity);
+                stock.addBuyOrder(buyorder);
+            }else if(buyorder.getQuantity() < sellorder.getQuantity()){
+                int updatedQuantity = sellorder.getQuantity() - buyorder.getQuantity();
+                sellorder.setQuantity(updatedQuantity);
+                stock.addSellOrder(sellorder);
+            }else{
+                // do nothing as of now.
+            }
+            Transaction transaction = new Transaction(stock.getName(), stock.getCurrentPrice());
+            transactions.add(transaction);
+        }
+        return;
     }
 
     public static void stockOrderBook(String stock_name){
