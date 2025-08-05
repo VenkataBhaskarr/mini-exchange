@@ -44,7 +44,9 @@ public class Order {
     public void setStock(String stock) {
         this.stock = stock;
     }
-
+    public void printOrder(){
+        System.out.println("order mode is " + this.type + " order stock is " + this.stock + " order price is " + this.price);
+    }
     public int getQuantity() {
         return quantity;
     }

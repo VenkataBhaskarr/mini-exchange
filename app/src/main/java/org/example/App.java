@@ -4,8 +4,10 @@
 package org.example;
 
 import java.util.Scanner;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -22,11 +24,12 @@ public class App {
        Scanner sc = new Scanner(System.in);
        stocks = new ArrayList<>();
        orders = new ArrayList<>();
+       transactions = new ArrayList<>();
 
        while(true){
          System.out.println("1. Enter as trader into the exchange ?");
          System.out.println("2. Enter as Admin into the exchange ?");
-         System.out.println("2. Exit !");
+         System.out.println("3. Exit !");
          String input = sc.nextLine();
          switch (input) {
             case "1": {
@@ -50,6 +53,7 @@ public class App {
 
     public static void gameStartsAsAdmin(Scanner sc){
         System.out.println("1. Enter new entry in stock? ");
+        System.out.println("2. Check the transactions? ");
         String input = sc.nextLine();
         switch (input) {
             case "1": {
@@ -57,22 +61,31 @@ public class App {
                 System.out.println("Enter stock name : ");
                 String s_name = sc.nextLine();
                 stock.setName(s_name);
-                System.out.println("enter stock quantity : ");
-                long s_quantity = sc.nextLong();
-                sc.nextLine();
-                stock.setAvailableQuantity(s_quantity);
-                System.out.println("Enter the stock price : ");
-                double stock_price = sc.nextDouble();
-                sc.nextLine();
-                stock.setPrice(stock_price);
+                // System.out.println("enter stock quantity : ");
+                // long s_quantity = sc.nextLong();
+                // sc.nextLine();
+                // stock.setAvailableQuantity(s_quantity);
+                // System.out.println("Enter the stock price : ");
+                // double stock_price = sc.nextDouble();
+                // sc.nextLine();
+                // stock.setPrice(stock_price);
                 stocks.add(stock);
                 break;
+            }
+            case "2": {
+                printTransactions();
             }
             default:
                 break;
         }
 
         return;
+    }
+
+    public static void printTransactions(){
+        for(Transaction transaction: transactions){
+            transaction.printTransaction();
+        }
     }
 
     public static void gameStartsAsTrader(Scanner sc){
@@ -109,10 +122,35 @@ public class App {
         try{
             ExecutorService service = Executors.newFixedThreadPool(PROCESSING_THREADS);
             BufferedReader br = new BufferedReader(new FileReader(file));
-            while(br.ready()){
-                String line = br.readLine();
-                service.execute(() -> handleOrder(line));
+            String line;
+            List<String> lines = new ArrayList<>();
+            while((line = br.readLine())  != null){
+                final String line_opt = line;
+                // START, Please optimize this code as well.
+                // service.execute(() -> handleOrder(line_opt));
+                lines.add(line_opt);
+                // END.
             }
+            CountDownLatch latch = new CountDownLatch(lines.size());
+            System.out.println(lines.size());
+            for(String single_line: lines){
+                try{
+                    service.execute(() -> handleOrder(single_line));
+                }catch(Exception e){
+                    System.out.println(e);
+                }finally{
+                    System.out.println("LATCH COUNTDOWN");
+                    latch.countDown();
+                }
+            }
+
+            if(latch.await(60, TimeUnit.SECONDS)){
+                //
+            }else{
+               
+                System.out.println("waiting for threads to complete");
+            }
+
             br.close();
             service.shutdown();
         }catch(Exception e){
@@ -122,15 +160,35 @@ public class App {
     }
 
     public static void handleOrder(String line){
+        //System.out.println("Order is handling by " + Thread.currentThread().getName());
         String[] orderInfo = line.split(",");
-        Order order = new Order(orderInfo[0], orderInfo[1], Integer.parseInt(orderInfo[2]), Double.parseDouble(orderInfo[3]));
+        List<String> cleanOrderInfo = new ArrayList<>();
+        if(orderInfo.length < 4) return;
 
-        // START, Please optimize the code from here
+        Order order = null;
+        for(String info: orderInfo){
+            if(info.equals("") || info.equals(" ")){
+                //skip
+            }else{
+                cleanOrderInfo.add(info);
+            }
+        }
+        order = new Order(cleanOrderInfo.get(0),
+                  cleanOrderInfo.get(1),
+                  Integer.parseInt(cleanOrderInfo.get(2)),
+                  Double.parseDouble(cleanOrderInfo.get(3)));
+
+        //order.printOrder();
+    
+        // // START, Please optimize the code from here
         for(Stock stock: stocks){
             if(stock.getName().equals(order.getStock())){
-                if(order.getType() == "BUY"){
+               // System.out.println(order.getType());
+                if(order.getType().strip().equals("BUY")){
+                   // System.out.println("adding buy order");
                     stock.addBuyOrder(order);
                 }else{
+                  //  System.out.println("adding sell order");
                     stock.addSellOrder(order);
                 }
             }
@@ -138,6 +196,7 @@ public class App {
 
         for(Stock stock: stocks){
              if(stock.getName().equals(order.getStock())){
+                //System.out.println("processing the order");
                 processOrderBookOfTheStock(stock);
              }
         }
@@ -148,11 +207,11 @@ public class App {
     public static void processOrderBookOfTheStock(Stock stock){
         Order buyorder = stock.getBuyOrderPeek();
         Order sellorder = stock.getSellOrderPeek();
-
-        if(buyorder.getPrice() == sellorder.getPrice()){
-            stock.removeBuyOrderPeek();
-            stock.removeSellOrderPeek();
-            stock.setCurrentPrice(buyorder.getPrice());
+        if(buyorder == null || sellorder == null) return;
+        if(buyorder.getPrice() >= sellorder.getPrice()){
+            // stock.removeBuyOrderPeek();
+            // stock.removeSellOrderPeek();
+            stock.setCurrentPrice(sellorder.getPrice());
             if(buyorder.getQuantity() > sellorder.getQuantity()){
                 int updatedQuantity = buyorder.getQuantity() - sellorder.getQuantity();
                 buyorder.setQuantity(updatedQuantity);

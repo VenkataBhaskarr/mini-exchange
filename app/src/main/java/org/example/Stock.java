@@ -2,6 +2,7 @@ package org.example;
 
 
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 public class Stock {
     private String name;
@@ -29,7 +30,9 @@ public class Stock {
                 return (int)(t1.getTimeStamp() - t2.getTimeStamp());
             }
         });
-        this.sellOrders = new PriorityBlockingQueue<>();
+        this.sellOrders = new PriorityBlockingQueue<>(11, (t1,t2) -> {
+            return (int)(t1.getPrice() - t2.getPrice());
+        });
     }
 
     public void addBuyOrder(Order e){
@@ -37,11 +40,21 @@ public class Stock {
     }
 
     public Order getBuyOrderPeek(){
-        return this.buyOrders.peek();
+        //return this.buyOrders.peek();
+        try {
+            return this.buyOrders.poll(1000, TimeUnit.MILLISECONDS);
+        }catch(Exception e){
+            return null;
+        }
+        
     }
 
     public Order getSellOrderPeek(){
-        return this.buyOrders.peek();
+         try {
+            return this.sellOrders.poll(1000, TimeUnit.MILLISECONDS);
+        }catch(Exception e){
+            return null;
+        }
     }
 
     public void removeBuyOrderPeek(){
