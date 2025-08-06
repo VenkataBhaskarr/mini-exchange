@@ -21,17 +21,25 @@ public class Stock {
     }
 
     public Stock(){
+        // Buy orders: Highest price first, then by timestamp (FIFO for same price)
         this.buyOrders = new PriorityBlockingQueue<>(11, (t1,t2) -> {
             if(t1.getPrice() > t2.getPrice()){
-                return 1;
+                return -1;  // Higher price has higher priority
             }else if(t1.getPrice() < t2.getPrice()){
-                return -1;
+                return 1;
             }else{
-                return (int)(t1.getTimeStamp() - t2.getTimeStamp());
+                return (int)(t1.getTimeStamp() - t2.getTimeStamp());  // FIFO for same price
             }
         });
+        // Sell orders: Lowest price first, then by timestamp (FIFO for same price)
         this.sellOrders = new PriorityBlockingQueue<>(11, (t1,t2) -> {
-            return (int)(t1.getPrice() - t2.getPrice());
+            if(t1.getPrice() < t2.getPrice()){
+                return -1;  // Lower price has higher priority
+            }else if(t1.getPrice() > t2.getPrice()){
+                return 1;
+            }else{
+                return (int)(t1.getTimeStamp() - t2.getTimeStamp());  // FIFO for same price
+            }
         });
     }
 
@@ -40,21 +48,19 @@ public class Stock {
     }
 
     public Order getBuyOrderPeek(){
-        //return this.buyOrders.peek();
-        try {
-            return this.buyOrders.poll(500, TimeUnit.MILLISECONDS);
-        }catch(Exception e){
-            return null;
-        }
-        
+        return this.buyOrders.peek();  // Non-blocking peek (doesn't remove)
     }
 
     public Order getSellOrderPeek(){
-         try {
-            return this.sellOrders.poll(500, TimeUnit.MILLISECONDS);
-        }catch(Exception e){
-            return null;
-        }
+        return this.sellOrders.peek();  // Non-blocking peek (doesn't remove)
+    }
+
+    public Order pollBuyOrder(){
+        return this.buyOrders.poll();  // Remove and return
+    }
+
+    public Order pollSellOrder(){
+        return this.sellOrders.poll();  // Remove and return
     }
 
     public void printBuyOrders(){
@@ -94,7 +100,7 @@ public class Stock {
 
 
     public void addSellOrder(Order e){
-        this.sellOrders.offer(e);
+        this.sellOrders.add(e);
     }
 
     public String getName() {

@@ -16,10 +16,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class App {
-    private static int PROCESSING_THREADS = 4;
+    private static int PROCESSING_THREADS = 5;
     private static List<Stock> stocks;
     private static List<Order> orders;
     private static List<Transaction> transactions;
+    private static ReentrantLock transactionLock;
     public static void main(String[] args) {
         // String a = args[0];
        Scanner sc = new Scanner(System.in);
@@ -41,6 +42,7 @@ public class App {
        stocks.add(stock5);
        orders = new ArrayList<>();
        transactions = new ArrayList<>();
+       transactionLock = new ReentrantLock();
 
        while(true){
          System.out.println("1. Enter as trader into the exchange ?");
@@ -102,6 +104,7 @@ public class App {
         for(Transaction transaction: transactions){
             transaction.printTransaction();
         }
+        System.out.println(transactions.size());
     }
 
     public static void gameStartsAsTrader(Scanner sc){
@@ -133,8 +136,15 @@ public class App {
         }
     }
 
+    public static void handleOrderLines(List<String> lines){
+        for(String line : lines){
+            handleOrder(line);
+        }
+    }
+
     public static void handleCSVOrders(){
         File file = new File("/Users/apple/Desktop/dev/exchange-java/app/data/orders.csv");
+
         try{
             ExecutorService service = Executors.newFixedThreadPool(PROCESSING_THREADS);
             BufferedReader br = new BufferedReader(new FileReader(file));
@@ -142,32 +152,38 @@ public class App {
             List<String> lines = new ArrayList<>();
             while((line = br.readLine())  != null){
                 final String line_opt = line;
-                // START, Please optimize this code as well.
-                // service.execute(() -> handleOrder(line_opt));
                 lines.add(line_opt);
-                // END.
             }
             CountDownLatch latch = new CountDownLatch(lines.size());
-            //System.out.println(lines.size());
             for(String single_line: lines){
-                try{
-                    service.execute(() -> handleOrder(single_line));
-                }catch(Exception e){
-                    System.out.println(e);
-                }finally{
-                    //System.out.println("LATCH COUNTDOWN");
+               service.execute(() -> {
+                 try{
+                    handleOrder(single_line);
+                 }finally{
                     latch.countDown();
-                }
+                 }
+               });
             }
-
-            if(latch.await(240, TimeUnit.SECONDS)){
-                //System.out.println("Latch was done1");
+            
+            if(latch.await(10000, TimeUnit.MILLISECONDS)){
+                service.shutdown();
+                br.close();
             }else{
-                System.out.println("waiting for threads to complete");
+                System.out.println("Timeout threads are yet to complete");
+                service.shutdown();
+                br.close();
             }
+            // if(latch.await(20, TimeUnit.SECONDS)){
+            //    Thread.sleep(500);
+            //    //System.out.println("reached end of all threads");
+            //    service.shutdown();
+            //    //System.out.println("service shutdown");
+            // }else{
+            //     System.out.println("waiting for threads to complete");
+            // }
 
-            br.close();
-            service.shutdown();
+            // br.close();
+           
         }catch(Exception e){
             System.out.println(e);
             return;
@@ -180,7 +196,6 @@ public class App {
         List<String> cleanOrderInfo = new ArrayList<>();
         if(orderInfo.length < 4) return;
 
-        Order order = null;
         for(String info: orderInfo){
             if(info.equals("") || info.equals(" ")){
                 //skip
@@ -188,7 +203,7 @@ public class App {
                 cleanOrderInfo.add(info);
             }
         }
-        order = new Order(cleanOrderInfo.get(0),
+        Order order = new Order(cleanOrderInfo.get(0),
                   cleanOrderInfo.get(1),
                   Integer.parseInt(cleanOrderInfo.get(2)),
                   Double.parseDouble(cleanOrderInfo.get(3)));
@@ -196,75 +211,92 @@ public class App {
         //order.printOrder();
         //System.out.println(order.getStock() + " is handling by " + Thread.currentThread().getName());
         // // START, Please optimize the code from here
-        
-        for(Stock stock: stocks){
-            if(stock.getName().equals(order.getStock())){
-               // System.out.println(order.getType());
-                if(order.getType().strip().equals("BUY")){
-                   //System.out.println("adding buy order for stock " + order.getStock());
-                    stock.addBuyOrder(order);
-                }else{
-                    //System.out.println("adding sell order for stock " + order.getStock());
-                    stock.addSellOrder(order);
-                }
+        Stock stock = null;
+
+        for(Stock stk: stocks){
+            if(stk.getName().equals(order.getStock())){
+                stock = stk;
             }
         }
 
-        for(Stock stock: stocks){
-             if(stock.getName().equals(order.getStock())){
-                //System.out.println("processing the order");
-                processOrderBookOfTheStock(stock);
-             }
+        synchronized(stock){
+            if(order.getType().strip().equals("BUY")){
+                //System.out.println("adding buy order for stock " + order.getStock());
+                stock.addBuyOrder(order);
+            }else{
+                //System.out.println("adding sell order for stock " + order.getStock());
+                stock.addSellOrder(order);
+            }
+            processOrderBookOfTheStock(stock);
         }
         // END.
 
     }
 
     public static void processOrderBookOfTheStock(Stock stock){
-        //System.out.println("processing for stock " + stock.getName());
-        Order buyorder = stock.getBuyOrderPeek();
-        Order sellorder = stock.getSellOrderPeek();
+        // Keep processing until no more matches are possible
+        while(true) {
+            // Peek at the top orders without removing them
+            Order buyorder = stock.getBuyOrderPeek();
+            Order sellorder = stock.getSellOrderPeek();
 
-        if(buyorder == null && sellorder == null) return;
-        if(buyorder == null){
-            stock.addSellOrder(sellorder);
-            //System.out.println("processing stock " + stock.getName() + " buy order is null.");
-            return;
-        }
-        if(sellorder == null){
-            stock.addBuyOrder(buyorder);
-            //System.out.println("processing stock " + stock.getName() + " sell order is null.");
-            return;
-        }
-        
-        // buyorder.printOrder();
-        // sellorder.printOrder();
-       
-        if(buyorder.getPrice() >= sellorder.getPrice()){
+            // If either side is empty, exit
+            if(buyorder == null || sellorder == null) {
+                return;
+            }
             
-            stock.setCurrentPrice(sellorder.getPrice());
-            if(buyorder.getQuantity() > sellorder.getQuantity()){
-                int updatedQuantity = buyorder.getQuantity() - sellorder.getQuantity();
-                buyorder.setQuantity(updatedQuantity);
-                stock.addBuyOrder(buyorder);
-            }else if(buyorder.getQuantity() < sellorder.getQuantity()){
-                int updatedQuantity = sellorder.getQuantity() - buyorder.getQuantity();
-                sellorder.setQuantity(updatedQuantity);
-                stock.addSellOrder(sellorder);
-            }else{
-                // do nothing as of now.
-            }
-            System.out.println("Transacting for stock " + stock.getName());
-            ReentrantLock lock = new ReentrantLock();
-            try {
-                Transaction transaction = new Transaction(stock.getName(), stock.getCurrentPrice());
-                lock.lock();
-                transactions.add(transaction);
-            }finally{
-                lock.unlock();
+            // Check if a match is possible (buy price >= sell price)
+            if(buyorder.getPrice() >= sellorder.getPrice()){
+                // Now that we know there's a match, actually remove the orders
+                buyorder = stock.pollBuyOrder();
+                sellorder = stock.pollSellOrder();
+                
+                // Double-check they're still there (another thread might have taken them)
+                if(buyorder == null || sellorder == null) {
+                    // Put back any that we got
+                    if(buyorder != null) stock.addBuyOrder(buyorder);
+                    if(sellorder != null) stock.addSellOrder(sellorder);
+                    continue;
+                }
+                
+                // Execute the trade at the sell price (market convention)
+                double tradePrice = sellorder.getPrice();
+                int tradeQuantity = Math.min(buyorder.getQuantity(), sellorder.getQuantity());
+                
+                stock.setCurrentPrice(tradePrice);
+                
+                // Handle partial fills
+                if(buyorder.getQuantity() > sellorder.getQuantity()){
+                    // Buy order partially filled, sell order completely filled
+                    int remainingQuantity = buyorder.getQuantity() - sellorder.getQuantity();
+                    buyorder.setQuantity(remainingQuantity);
+                    stock.addBuyOrder(buyorder);  // Put back the remaining buy order
+                    // sellorder is completely consumed, don't put it back
+                }else if(buyorder.getQuantity() < sellorder.getQuantity()){
+                    // Sell order partially filled, buy order completely filled
+                    int remainingQuantity = sellorder.getQuantity() - buyorder.getQuantity();
+                    sellorder.setQuantity(remainingQuantity);
+                    stock.addSellOrder(sellorder);  // Put back the remaining sell order
+                    // buyorder is completely consumed, don't put it back
+                }else{
+                    // Both orders completely filled, don't put either back
+                }
+                
+                // Record the transaction
+                transactionLock.lock();
+                try {
+                    Transaction transaction = new Transaction(stock.getName(), tradePrice);  
+                    transactions.add(transaction);
+                }finally{
+                    transactionLock.unlock();
+                }
+                
+                // Continue the loop to check for more matches
+            } else {
+                // No match possible, exit (orders remain in queues)
+                return;
             }
         }
-        return;
     }
 
     public static void stockOrderBook(String stock_name){

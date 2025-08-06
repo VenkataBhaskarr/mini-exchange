@@ -1,4 +1,5 @@
 package org.example;
+import java.util.UUID;
 
 public class Transaction {
     private String transactionID;
@@ -18,6 +19,6 @@ public class Transaction {
     }
 
     public String generateTransactionID(){
-       return (Math.random()*10000000) + "";
+       return UUID.randomUUID().toString();
     }
 }
