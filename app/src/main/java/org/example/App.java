@@ -8,6 +8,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -23,6 +24,21 @@ public class App {
         // String a = args[0];
        Scanner sc = new Scanner(System.in);
        stocks = new ArrayList<>();
+       Stock stock1 = new Stock();
+       stock1.setName("RELIANCE");
+       stocks.add(stock1);
+       Stock stock2 = new Stock();
+       stock2.setName("TCS");
+       stocks.add(stock2);
+       Stock stock3  = new Stock();
+       stock3.setName("HDFCBANK");
+       stocks.add(stock3);
+       Stock stock4  = new Stock();
+       stock4.setName("ITC");
+       stocks.add(stock4);
+       Stock stock5  = new Stock();
+       stock5.setName("INFY");
+       stocks.add(stock5);
        orders = new ArrayList<>();
        transactions = new ArrayList<>();
 
@@ -132,22 +148,21 @@ public class App {
                 // END.
             }
             CountDownLatch latch = new CountDownLatch(lines.size());
-            System.out.println(lines.size());
+            //System.out.println(lines.size());
             for(String single_line: lines){
                 try{
                     service.execute(() -> handleOrder(single_line));
                 }catch(Exception e){
                     System.out.println(e);
                 }finally{
-                    System.out.println("LATCH COUNTDOWN");
+                    //System.out.println("LATCH COUNTDOWN");
                     latch.countDown();
                 }
             }
 
-            if(latch.await(60, TimeUnit.SECONDS)){
-                //
+            if(latch.await(240, TimeUnit.SECONDS)){
+                //System.out.println("Latch was done1");
             }else{
-               
                 System.out.println("waiting for threads to complete");
             }
 
@@ -160,7 +175,7 @@ public class App {
     }
 
     public static void handleOrder(String line){
-        //System.out.println("Order is handling by " + Thread.currentThread().getName());
+        //System.out.println(line + " is handling by " + Thread.currentThread().getName());
         String[] orderInfo = line.split(",");
         List<String> cleanOrderInfo = new ArrayList<>();
         if(orderInfo.length < 4) return;
@@ -179,16 +194,17 @@ public class App {
                   Double.parseDouble(cleanOrderInfo.get(3)));
 
         //order.printOrder();
-    
+        //System.out.println(order.getStock() + " is handling by " + Thread.currentThread().getName());
         // // START, Please optimize the code from here
+        
         for(Stock stock: stocks){
             if(stock.getName().equals(order.getStock())){
                // System.out.println(order.getType());
                 if(order.getType().strip().equals("BUY")){
-                   // System.out.println("adding buy order");
+                   //System.out.println("adding buy order for stock " + order.getStock());
                     stock.addBuyOrder(order);
                 }else{
-                  //  System.out.println("adding sell order");
+                    //System.out.println("adding sell order for stock " + order.getStock());
                     stock.addSellOrder(order);
                 }
             }
@@ -205,12 +221,27 @@ public class App {
     }
 
     public static void processOrderBookOfTheStock(Stock stock){
+        //System.out.println("processing for stock " + stock.getName());
         Order buyorder = stock.getBuyOrderPeek();
         Order sellorder = stock.getSellOrderPeek();
-        if(buyorder == null || sellorder == null) return;
+
+        if(buyorder == null && sellorder == null) return;
+        if(buyorder == null){
+            stock.addSellOrder(sellorder);
+            //System.out.println("processing stock " + stock.getName() + " buy order is null.");
+            return;
+        }
+        if(sellorder == null){
+            stock.addBuyOrder(buyorder);
+            //System.out.println("processing stock " + stock.getName() + " sell order is null.");
+            return;
+        }
+        
+        // buyorder.printOrder();
+        // sellorder.printOrder();
+       
         if(buyorder.getPrice() >= sellorder.getPrice()){
-            // stock.removeBuyOrderPeek();
-            // stock.removeSellOrderPeek();
+            
             stock.setCurrentPrice(sellorder.getPrice());
             if(buyorder.getQuantity() > sellorder.getQuantity()){
                 int updatedQuantity = buyorder.getQuantity() - sellorder.getQuantity();
@@ -223,14 +254,26 @@ public class App {
             }else{
                 // do nothing as of now.
             }
-            Transaction transaction = new Transaction(stock.getName(), stock.getCurrentPrice());
-            transactions.add(transaction);
+            System.out.println("Transacting for stock " + stock.getName());
+            ReentrantLock lock = new ReentrantLock();
+            try {
+                Transaction transaction = new Transaction(stock.getName(), stock.getCurrentPrice());
+                lock.lock();
+                transactions.add(transaction);
+            }finally{
+                lock.unlock();
+            }
         }
         return;
     }
 
     public static void stockOrderBook(String stock_name){
-
+       for(Stock stock: stocks){
+        if(stock.getName().equals(stock_name)){
+             stock.printBuyOrders();
+             stock.printSellOrders();
+        }
+       }
     }
     
     public static void listAllStocks(){

@@ -42,7 +42,7 @@ public class Stock {
     public Order getBuyOrderPeek(){
         //return this.buyOrders.peek();
         try {
-            return this.buyOrders.poll(1000, TimeUnit.MILLISECONDS);
+            return this.buyOrders.poll(500, TimeUnit.MILLISECONDS);
         }catch(Exception e){
             return null;
         }
@@ -51,11 +51,30 @@ public class Stock {
 
     public Order getSellOrderPeek(){
          try {
-            return this.sellOrders.poll(1000, TimeUnit.MILLISECONDS);
+            return this.sellOrders.poll(500, TimeUnit.MILLISECONDS);
         }catch(Exception e){
             return null;
         }
     }
+
+    public void printBuyOrders(){
+        if(buyOrders.size() == 0){
+            System.out.println("ZERO SIZE buy BABY");
+        }
+        for(Order ord: buyOrders){
+           ord.printOrder();
+        }
+    }
+
+    public void printSellOrders(){
+        if(sellOrders.size() == 0){
+            System.out.println("ZERO SIZE sell BABY");
+        }
+        for(Order ord: sellOrders){
+           ord.printOrder();
+        }
+    }
+    
 
     public void removeBuyOrderPeek(){
         try{

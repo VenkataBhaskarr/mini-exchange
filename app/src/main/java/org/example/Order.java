@@ -7,8 +7,6 @@ public class Order {
     private double price;
     private String type;
     private long timeStamp;
-    private int start = 00000000;
-
    
 
     public Order(String type, String stock, int quantity, double price) {
@@ -25,7 +23,7 @@ public class Order {
     }
 
     public String generateRandomOrderId(){
-        return (start++) + "";
+         return (Math.random()*10000000) + "";
     }
    
 

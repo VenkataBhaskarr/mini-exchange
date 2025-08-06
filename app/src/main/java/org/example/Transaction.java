@@ -5,7 +5,6 @@ public class Transaction {
     private String stockname;
     private long timeStamp;
     private double executedPrice;
-    private int ID = 10000000;
 
     public Transaction(String stockname, double executedPrice){
         this.transactionID = generateTransactionID();
@@ -19,6 +18,6 @@ public class Transaction {
     }
 
     public String generateTransactionID(){
-        return ID++ + "";
+       return (Math.random()*10000000) + "";
     }
 }
